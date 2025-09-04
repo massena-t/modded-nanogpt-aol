@@ -104,8 +104,9 @@ mm_op.register_autograd(backward, setup_context=setup_context)
 # -----------------------------------------------------------------------------
 # Muon optimizer
 
-from src.ns_variants import newton_schulz_triton_aol
+from src.ns_variants import newton_schulz_triton_aol, newton_schulz_triton_dion
 
+# Choose one of the two Newton-Schulz implementations here:
 zeropower_via_newtonschulz5 = newton_schulz_triton_aol
 
 class Muon(torch.optim.Optimizer):
@@ -533,8 +534,8 @@ class Hyperparameters:
     train_files = "data/fineweb10B/fineweb_train_*.bin" # input .bin to train on
     val_files = "data/fineweb10B/fineweb_val_*.bin" # input .bin to eval validation loss on
     val_tokens = 10485760 # how many tokens of validation data? it's important to keep this fixed for consistent comparisons
-    train_seq_len = 48*1024 # FlexAttention sequence length
-    val_seq_len = 4*64*1024 # FlexAttention sequence length for validation
+    train_seq_len = 4*1024 # FlexAttention sequence length
+    val_seq_len = 2*8*1024 # FlexAttention sequence length for validation
     # optimization
     num_iterations = 1750 # number of iterations to run
     cooldown_frac = 0.45 # fraction of training spent cooling down the learning rate
@@ -546,7 +547,7 @@ args = Hyperparameters()
 # torchrun sets these env variables
 rank = int(os.environ["RANK"])
 world_size = int(os.environ["WORLD_SIZE"])
-assert world_size == 8 # this code is designed for 8xH100
+assert world_size == 2 # this code is designed for 8xH100
 assert torch.cuda.is_available()
 device = torch.device("cuda", int(os.environ["LOCAL_RANK"]))
 torch.cuda.set_device(device)
@@ -635,7 +636,7 @@ model: nn.Module = torch.compile(model, dynamic=False)
 warmup_steps = 10
 initial_state = dict(model=copy.deepcopy(model.state_dict()),
                      optimizers=[copy.deepcopy(opt.state_dict()) for opt in optimizers]) # save the initial state
-train_loader = distributed_data_generator(args.train_files, world_size * args.train_seq_len, align_to_bos=True)
+train_loader = distributed_data_generator(args.train_files, world_size * args.train_seq_len, align_to_bos=False)
 for _ in range(warmup_steps):
     inputs, targets = next(train_loader)
     model(inputs, targets, get_window_size_blocks(1)).backward()
@@ -651,7 +652,7 @@ del train_loader, initial_state
 #        Training and validation       #
 ########################################
 
-train_loader = distributed_data_generator(args.train_files, world_size * args.train_seq_len, align_to_bos=True)
+train_loader = distributed_data_generator(args.train_files, world_size * args.train_seq_len, align_to_bos=False)
 training_time_ms = 0
 # start the clock
 torch.cuda.synchronize()
