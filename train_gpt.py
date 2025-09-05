@@ -172,7 +172,7 @@ class Muon(torch.optim.Optimizer):
                     p.mul_(1 - eff_weight_decay)
                     momentum_buffer.lerp_(grad, 1 - momentum)
                     grad = grad.lerp_(momentum_buffer, momentum)
-                    v = zeropower_via_newtonschulz5(grad.bfloat16(), 5)
+                    v = zeropower_via_newtonschulz5(grad.bfloat16(), 1e-7)
                     p.add_(other=v, alpha=-eff_lr)
                 idx += 1
                 all_reduce_futures.append(dist.all_gather(params_pad[base_i:base_i + world_size], params_pad[base_i + rank], async_op=True).get_future())
